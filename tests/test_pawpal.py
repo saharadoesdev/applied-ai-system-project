@@ -155,3 +155,170 @@ def test_detect_schedule_conflicts_returns_warning_messages() -> None:
 	assert any("09:00 AM conflict (different pets)" in warning for warning in warnings)
 	assert any("Milo(Morning walk, Training session)" in warning for warning in warnings)
 	assert any("Luna(Feed breakfast)" in warning for warning in warnings)
+
+
+def test_generate_daily_plan_returns_tasks_in_chronological_order() -> None:
+	owner = Owner(owner_id=1, name="Sahara", available_minutes_per_day=180)
+	pet = Pet(pet_id=101, name="Milo", species="Dog", owner_id=1)
+	target_date = date(2026, 3, 18)
+
+	later_task = Task(
+		task_id=10,
+		pet_id=101,
+		description="Evening walk",
+		scheduled_for=datetime(2026, 3, 18, 18, 0),
+	)
+	early_task = Task(
+		task_id=11,
+		pet_id=101,
+		description="Morning feeding",
+		scheduled_for=datetime(2026, 3, 18, 7, 0),
+	)
+	mid_task = Task(
+		task_id=12,
+		pet_id=101,
+		description="Noon medicine",
+		scheduled_for=datetime(2026, 3, 18, 12, 0),
+	)
+
+	pet.add_task(later_task)
+	pet.add_task(early_task)
+	pet.add_task(mid_task)
+	owner.add_pet(pet)
+	scheduler = Scheduler(owner)
+
+	plan = scheduler.generate_daily_plan(target_date)
+
+	assert [task.task_id for task in plan] == [11, 12, 10]
+
+
+def test_generate_daily_plan_sorts_by_priority_then_task_id_for_same_time() -> None:
+	owner = Owner(owner_id=1, name="Sahara", available_minutes_per_day=180)
+	pet = Pet(pet_id=101, name="Milo", species="Dog", owner_id=1)
+	target_date = date(2026, 3, 18)
+
+	high_priority = Task(
+		task_id=21,
+		pet_id=101,
+		description="Urgent medication",
+		scheduled_for=datetime(2026, 3, 18, 8, 0),
+		priority=5,
+	)
+	lower_priority = Task(
+		task_id=20,
+		pet_id=101,
+		description="Regular walk",
+		scheduled_for=datetime(2026, 3, 18, 8, 0),
+		priority=2,
+	)
+	same_priority_lower_id = Task(
+		task_id=18,
+		pet_id=101,
+		description="Breakfast",
+		scheduled_for=datetime(2026, 3, 18, 9, 0),
+		priority=3,
+	)
+	same_priority_higher_id = Task(
+		task_id=19,
+		pet_id=101,
+		description="Brush coat",
+		scheduled_for=datetime(2026, 3, 18, 9, 0),
+		priority=3,
+	)
+
+	pet.add_task(lower_priority)
+	pet.add_task(high_priority)
+	pet.add_task(same_priority_higher_id)
+	pet.add_task(same_priority_lower_id)
+	owner.add_pet(pet)
+	scheduler = Scheduler(owner)
+
+	plan = scheduler.generate_daily_plan(target_date)
+
+	assert [task.task_id for task in plan] == [21, 20, 18, 19]
+
+
+def test_generate_daily_plan_returns_empty_for_pet_with_no_tasks() -> None:
+	owner = Owner(owner_id=1, name="Sahara", available_minutes_per_day=180)
+	pet = Pet(pet_id=101, name="Milo", species="Dog", owner_id=1)
+	owner.add_pet(pet)
+	scheduler = Scheduler(owner)
+
+	plan = scheduler.generate_daily_plan(date(2026, 3, 18))
+
+	assert plan == []
+	assert scheduler.explain_plan() == "No tasks scheduled for today."
+
+
+def test_mark_task_complete_once_task_does_not_create_new_task() -> None:
+	owner = Owner(owner_id=1, name="Sahara", available_minutes_per_day=180)
+	pet = Pet(pet_id=101, name="Milo", species="Dog", owner_id=1)
+	once_task = Task(
+		task_id=1,
+		pet_id=101,
+		description="Vet check-in",
+		scheduled_for=datetime(2026, 3, 18, 15, 0),
+		frequency="once",
+	)
+	pet.add_task(once_task)
+	owner.add_pet(pet)
+	scheduler = Scheduler(owner)
+
+	result = scheduler.mark_task_complete(1)
+
+	assert result is True
+	assert once_task.is_completed is True
+	assert len(pet.tasks) == 1
+
+
+def test_daily_task_with_future_start_date_not_included_before_start() -> None:
+	owner = Owner(owner_id=1, name="Sahara", available_minutes_per_day=180)
+	pet = Pet(pet_id=101, name="Milo", species="Dog", owner_id=1)
+	future_daily_task = Task(
+		task_id=1,
+		pet_id=101,
+		description="Future recurring medicine",
+		scheduled_for=datetime(2026, 3, 20, 8, 0),
+		frequency="daily",
+	)
+	pet.add_task(future_daily_task)
+	owner.add_pet(pet)
+	scheduler = Scheduler(owner)
+
+	tasks_before_start = scheduler.get_tasks_for_date(date(2026, 3, 18))
+	tasks_on_start = scheduler.get_tasks_for_date(date(2026, 3, 20))
+
+	assert tasks_before_start == []
+	assert tasks_on_start == [future_daily_task]
+
+
+def test_detect_schedule_conflicts_ignores_completed_tasks_by_default() -> None:
+	owner = Owner(owner_id=1, name="Sahara", available_minutes_per_day=180)
+	pet = Pet(pet_id=101, name="Milo", species="Dog", owner_id=1)
+	target_date = date(2026, 3, 18)
+
+	completed_task = Task(
+		task_id=1,
+		pet_id=101,
+		description="Completed walk",
+		scheduled_for=datetime(2026, 3, 18, 8, 0),
+		is_completed=True,
+	)
+	pending_task = Task(
+		task_id=2,
+		pet_id=101,
+		description="Pending breakfast",
+		scheduled_for=datetime(2026, 3, 18, 8, 0),
+	)
+
+	pet.add_task(completed_task)
+	pet.add_task(pending_task)
+	owner.add_pet(pet)
+	scheduler = Scheduler(owner)
+
+	default_warnings = scheduler.detect_schedule_conflicts(target_date)
+	all_warnings = scheduler.detect_schedule_conflicts(target_date, include_completed=True)
+
+	assert default_warnings == []
+	assert len(all_warnings) == 1
+	assert "08:00 AM conflict (same pet)" in all_warnings[0]
