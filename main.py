@@ -1,6 +1,11 @@
 from datetime import date, datetime
 
+from dotenv import load_dotenv
+
+from ai_explainer import GeminiPlanExplainer, explain_plan_with_fallback
 from pawpal_system import Owner, Pet, Scheduler, Task
+
+load_dotenv()
 
 
 def build_demo_data() -> Scheduler:
@@ -86,6 +91,7 @@ def print_todays_schedule(scheduler: Scheduler) -> None:
 	"""Generate and print today's ordered schedule from the scheduler."""
 	today = date.today()
 	plan = scheduler.generate_daily_plan(today)
+	pet_names_by_id = {pet.pet_id: pet.name for pet in scheduler.owner.pets}
 
 	print("Today's Schedule")
 	print("-" * 16)
@@ -96,7 +102,8 @@ def print_todays_schedule(scheduler: Scheduler) -> None:
 
 	for task in plan:
 		time_text = task.scheduled_for.strftime("%I:%M %p") if task.scheduled_for else "No time"
-		print(f"{time_text} | Pet #{task.pet_id} | {task.description} (Priority {task.priority})")
+		pet_name = pet_names_by_id.get(task.pet_id, f"Pet #{task.pet_id}")
+		print(f"{time_text} | {pet_name} | {task.description} (Priority {task.priority})")
 
 
 def print_filter_demo(scheduler: Scheduler) -> None:
@@ -135,8 +142,45 @@ def print_conflict_warnings(scheduler: Scheduler) -> None:
 		print(warning)
 
 
+def print_ai_summary(scheduler: Scheduler) -> None:
+	"""Print the AI explanation for today's generated plan, with a deterministic fallback."""
+	today = date.today()
+	plan = scheduler.generate_daily_plan(today)
+
+	print("\nAI Summary")
+	print("-" * 10)
+
+	if not plan:
+		print("No tasks scheduled for today.")
+		return
+
+	conflict_warnings = scheduler.detect_schedule_conflicts(today, include_completed=False)
+
+	try:
+		explainer = GeminiPlanExplainer()
+		ai_error = ""
+	except RuntimeError as error:
+		explainer = None
+		ai_error = str(error)
+
+	text, source = explain_plan_with_fallback(
+		owner=scheduler.owner,
+		plan=plan,
+		plan_reasons=scheduler.plan_reasons,
+		target_date=today,
+		conflict_warnings=conflict_warnings,
+		explainer=explainer,
+	)
+
+	print(f"Mode: {'AI (Gemini)' if source == 'ai' else 'deterministic fallback'}")
+	if source != "ai" and ai_error:
+		print(f"AI unavailable: {ai_error}")
+	print(text)
+
+
 if __name__ == "__main__":
 	scheduler = build_demo_data()
 	print_todays_schedule(scheduler)
 	print_filter_demo(scheduler)
 	print_conflict_warnings(scheduler)
+	print_ai_summary(scheduler)

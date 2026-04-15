@@ -42,6 +42,7 @@ def test_build_fallback_explanation_includes_reason_text() -> None:
 	assert "Milo" in text
 	assert "Morning walk" in text
 	assert "Included because it is due today" in text
+	assert "First step: Morning walk for Milo at 08:00 AM." in text
 
 
 def test_explain_plan_with_fallback_uses_fallback_when_no_explainer() -> None:
@@ -58,6 +59,7 @@ def test_explain_plan_with_fallback_uses_fallback_when_no_explainer() -> None:
 
 	assert source == "fallback"
 	assert "Plan rationale" in text
+	assert "First step:" in text
 
 
 def test_explain_plan_with_fallback_uses_fallback_when_ai_errors() -> None:
@@ -74,6 +76,7 @@ def test_explain_plan_with_fallback_uses_fallback_when_ai_errors() -> None:
 
 	assert source == "fallback"
 	assert "Plan rationale" in text
+	assert "First step:" in text
 
 
 def test_explain_plan_with_fallback_uses_ai_when_available() -> None:
@@ -89,4 +92,5 @@ def test_explain_plan_with_fallback_uses_ai_when_available() -> None:
 	)
 
 	assert source == "ai"
-	assert text == "AI explanation text"
+	assert "AI explanation text" in text
+	assert "First step: Morning walk for Milo at 08:00 AM." in text

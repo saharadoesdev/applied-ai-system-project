@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import date
 
 from pawpal_system import Owner, Task
@@ -17,14 +18,14 @@ class GeminiPlanExplainer:
 			raise RuntimeError("Missing GEMINI_API_KEY")
 
 		try:
-			import google.generativeai as genai
+			from google import genai
 		except ImportError as exc:
 			raise RuntimeError(
-				"google-generativeai is not installed. Add it to requirements and install dependencies."
+				"google-genai is not installed. Add it to requirements and install dependencies."
 			) from exc
 
-		genai.configure(api_key=api_key)
-		self._model = genai.GenerativeModel(model_name)
+		self._client = genai.Client(api_key=api_key)
+		self._model_name = model_name
 
 	def explain_plan(
 		self,
@@ -37,7 +38,7 @@ class GeminiPlanExplainer:
 	) -> str:
 		"""Return a plain-language explanation grounded in scheduler output."""
 		prompt = _build_prompt(owner, plan, pet_names_by_id, plan_reasons, target_date, conflict_warnings)
-		response = self._model.generate_content(prompt)
+		response = self._client.models.generate_content(model=self._model_name, contents=prompt)
 		response_text = (getattr(response, "text", "") or "").strip()
 		if not response_text:
 			raise RuntimeError("Gemini returned an empty explanation")
@@ -83,9 +84,54 @@ def _build_prompt(
 		"Output format:\n"
 		"1) 1 short paragraph summary.\n"
 		"2) 1 bullet per task.\n"
-		"3) 1 final line that says the first task to do right now.\n"
+		"3) 1 final line that recommends exactly one first task to do right now.\n"
+		"If multiple tasks share the earliest time, choose only one from the first listed task in Plan items.\n"
 		"Keep it to 3 to 5 short sentences total if possible."
 	)
+
+
+def _first_step_line(plan: list[Task], pet_names_by_id: dict[int, str]) -> str:
+	"""Return a deterministic single-task first-step recommendation."""
+	if not plan:
+		return "First step: No tasks scheduled for today."
+
+	first_task = plan[0]
+	time_text = first_task.scheduled_for.strftime("%I:%M %p") if first_task.scheduled_for else "No time"
+	pet_name = pet_names_by_id.get(first_task.pet_id, f"Pet #{first_task.pet_id}")
+	return f"First step: {first_task.description} for {pet_name} at {time_text}."
+
+
+def _normalize_first_step_text(text: str, deterministic_first_step: str) -> str:
+	"""Keep one clear first-action line by removing common duplicate phrasing."""
+	if not text.strip():
+		return deterministic_first_step
+
+	duplicate_patterns = (
+		r"^to begin.*",
+		r"^start your day.*",
+		r"^your first task(?:s)? .*",
+		r"^the first task to do right now.*",
+	)
+
+	kept_lines: list[str] = []
+	for raw_line in text.splitlines():
+		line = raw_line.strip()
+		if not line:
+			kept_lines.append(raw_line)
+			continue
+
+		if line.lower().startswith("first step:"):
+			continue
+
+		if any(re.match(pattern, line.lower()) for pattern in duplicate_patterns):
+			continue
+
+		kept_lines.append(raw_line)
+
+	cleaned = "\n".join(kept_lines).strip()
+	if cleaned:
+		return f"{cleaned}\n\n{deterministic_first_step}"
+	return deterministic_first_step
 
 
 def build_fallback_explanation(
@@ -105,6 +151,8 @@ def build_fallback_explanation(
 		lines.append(
 			f"- {time_text} | {pet_name} | {task.description} (Priority {task.priority}): {reason}"
 		)
+	lines.append("")
+	lines.append(_first_step_line(plan, pet_names_by_id))
 	return "\n".join(lines)
 
 
@@ -132,6 +180,7 @@ def explain_plan_with_fallback(
 			target_date=target_date,
 			conflict_warnings=conflict_warnings,
 		)
-		return text, "ai"
+		first_step = _first_step_line(plan, pet_names_by_id)
+		return _normalize_first_step_text(text, first_step), "ai"
 	except Exception:
 		return fallback, "fallback"
