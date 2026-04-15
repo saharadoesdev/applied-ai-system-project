@@ -33,11 +33,13 @@ def _build_owner_and_plan() -> tuple[Owner, list[Task], dict[int, str]]:
 
 
 def test_build_fallback_explanation_includes_reason_text() -> None:
-	_, plan, plan_reasons = _build_owner_and_plan()
+	owner, plan, plan_reasons = _build_owner_and_plan()
+	pet_names_by_id = {pet.pet_id: pet.name for pet in owner.pets}
 
-	text = build_fallback_explanation(plan, plan_reasons)
+	text = build_fallback_explanation(plan, plan_reasons, pet_names_by_id)
 
 	assert "fallback mode" in text.lower()
+	assert "Milo" in text
 	assert "Morning walk" in text
 	assert "Included because it is due today" in text
 

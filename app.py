@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import date, datetime
+from datetime import date, datetime, time
 from dotenv import load_dotenv
 
 from ai_explainer import GeminiPlanExplainer, explain_plan_with_fallback
@@ -121,7 +121,7 @@ col4, col5 = st.columns(2)
 with col4:
     task_date = st.date_input("Task date", value=date.today())
 with col5:
-    task_time = st.time_input("Task time", value=datetime.now().time())
+    task_time = st.time_input("Task time", value=time(8, 0))
 
 frequency = st.selectbox("Frequency", ["once", "daily", "weekly"], index=0)
 
@@ -215,4 +215,4 @@ if st.button("Generate schedule"):
             for warning in conflict_warnings:
                 st.warning(warning)
 
-        st.text(explanation_text)
+        st.markdown(explanation_text)

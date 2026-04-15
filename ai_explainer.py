@@ -30,12 +30,13 @@ class GeminiPlanExplainer:
 		self,
 		owner: Owner,
 		plan: list[Task],
+		pet_names_by_id: dict[int, str],
 		plan_reasons: dict[int, str],
 		target_date: date,
 		conflict_warnings: list[str],
 	) -> str:
 		"""Return a plain-language explanation grounded in scheduler output."""
-		prompt = _build_prompt(owner, plan, plan_reasons, target_date, conflict_warnings)
+		prompt = _build_prompt(owner, plan, pet_names_by_id, plan_reasons, target_date, conflict_warnings)
 		response = self._model.generate_content(prompt)
 		response_text = (getattr(response, "text", "") or "").strip()
 		if not response_text:
@@ -46,6 +47,7 @@ class GeminiPlanExplainer:
 def _build_prompt(
 	owner: Owner,
 	plan: list[Task],
+	pet_names_by_id: dict[int, str],
 	plan_reasons: dict[int, str],
 	target_date: date,
 	conflict_warnings: list[str],
@@ -53,9 +55,10 @@ def _build_prompt(
 	lines: list[str] = []
 	for task in plan:
 		time_text = task.scheduled_for.strftime("%I:%M %p") if task.scheduled_for else "No time"
+		pet_name = pet_names_by_id.get(task.pet_id, f"Pet #{task.pet_id}")
 		reason = plan_reasons.get(task.task_id, "Included in today's plan")
 		lines.append(
-			f"- {time_text} | Pet #{task.pet_id} | {task.description} | "
+			f"- {time_text} | {pet_name} | {task.description} | "
 			f"Priority {task.priority} | Frequency {task.frequency} | Reason: {reason}"
 		)
 
@@ -65,8 +68,11 @@ def _build_prompt(
 
 	return (
 		"You are an assistant for a pet care scheduling app.\n"
-		"Explain the schedule clearly and avoid medical claims.\n"
-		"Use only the schedule details provided below.\n\n"
+		"Write a concise, friendly explanation of the schedule.\n"
+		"Do not mention model rules or your own uncertainty unless there is a conflict.\n"
+		"Use only the schedule details provided below.\n"
+		"Prefer the pet's name over pet ids.\n"
+		"Avoid repeating the same reason in multiple ways.\n\n"
 		f"Owner: {owner.name}\n"
 		f"Date: {target_date.isoformat()}\n"
 		f"Available minutes per day: {owner.available_minutes_per_day}\n\n"
@@ -75,13 +81,18 @@ def _build_prompt(
 		"Conflict warnings:\n"
 		f"{conflict_text}\n\n"
 		"Output format:\n"
-		"1) A short paragraph summarizing why this order makes sense.\n"
-		"2) A bullet for each task explaining why it appears where it does.\n"
-		"3) A final one-line recommendation for what to do first right now."
+		"1) 1 short paragraph summary.\n"
+		"2) 1 bullet per task.\n"
+		"3) 1 final line that says the first task to do right now.\n"
+		"Keep it to 3 to 5 short sentences total if possible."
 	)
 
 
-def build_fallback_explanation(plan: list[Task], plan_reasons: dict[int, str]) -> str:
+def build_fallback_explanation(
+	plan: list[Task],
+	plan_reasons: dict[int, str],
+	pet_names_by_id: dict[int, str],
+) -> str:
 	"""Build a deterministic explanation used when AI is unavailable."""
 	if not plan:
 		return "No tasks scheduled for today."
@@ -89,9 +100,10 @@ def build_fallback_explanation(plan: list[Task], plan_reasons: dict[int, str]) -
 	lines = ["Plan rationale (fallback mode):"]
 	for task in plan:
 		time_text = task.scheduled_for.strftime("%I:%M %p") if task.scheduled_for else "No time"
+		pet_name = pet_names_by_id.get(task.pet_id, f"Pet #{task.pet_id}")
 		reason = plan_reasons.get(task.task_id, "Included in today's plan")
 		lines.append(
-			f"- {time_text} | {task.description} (Priority {task.priority}): {reason}"
+			f"- {time_text} | {pet_name} | {task.description} (Priority {task.priority}): {reason}"
 		)
 	return "\n".join(lines)
 
@@ -105,7 +117,8 @@ def explain_plan_with_fallback(
 	explainer: GeminiPlanExplainer | None,
 ) -> tuple[str, str]:
 	"""Return explanation text and source label: 'ai' or 'fallback'."""
-	fallback = build_fallback_explanation(plan, plan_reasons)
+	pet_names_by_id = {pet.pet_id: pet.name for pet in owner.pets}
+	fallback = build_fallback_explanation(plan, plan_reasons, pet_names_by_id)
 
 	if explainer is None:
 		return fallback, "fallback"
@@ -114,6 +127,7 @@ def explain_plan_with_fallback(
 		text = explainer.explain_plan(
 			owner=owner,
 			plan=plan,
+			pet_names_by_id=pet_names_by_id,
 			plan_reasons=plan_reasons,
 			target_date=target_date,
 			conflict_warnings=conflict_warnings,
