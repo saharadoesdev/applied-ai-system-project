@@ -26,10 +26,51 @@ Your final app should:
 
 ### Setup
 
+1. Create and activate a virtual environment.
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
+```
+
+2. Install dependencies.
+
+```bash
 pip install -r requirements.txt
+```
+
+3. Configure Gemini key for AI mode.
+
+```bash
+cp .env.example .env  # Windows PowerShell: Copy-Item .env.example .env
+```
+
+Add your key to `.env`:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+If the key is missing, the project still runs using deterministic fallback explanations.
+
+### Run
+
+Streamlit app:
+
+```bash
+streamlit run app.py
+```
+
+Terminal demo:
+
+```bash
+python main.py
+```
+
+Tests:
+
+```bash
+pytest -q
 ```
 
 ### Suggested workflow

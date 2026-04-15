@@ -1,9 +1,13 @@
+import logging
 from datetime import date, datetime
 
 from dotenv import load_dotenv
 
 from ai_explainer import GeminiPlanExplainer, explain_plan_with_fallback
 from pawpal_system import Owner, Pet, Scheduler, Task
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -159,9 +163,11 @@ def print_ai_summary(scheduler: Scheduler) -> None:
 	try:
 		explainer = GeminiPlanExplainer()
 		ai_error = ""
+		logger.info("CLI AI explainer initialized")
 	except RuntimeError as error:
 		explainer = None
 		ai_error = str(error)
+		logger.warning("CLI running without AI explainer: %s", error)
 
 	text, source = explain_plan_with_fallback(
 		owner=scheduler.owner,
@@ -173,6 +179,7 @@ def print_ai_summary(scheduler: Scheduler) -> None:
 	)
 
 	print(f"Mode: {'AI (Gemini)' if source == 'ai' else 'deterministic fallback'}")
+	logger.info("CLI explanation mode selected: %s", source)
 	if source != "ai" and ai_error:
 		print(f"AI unavailable: {ai_error}")
 	print(text)

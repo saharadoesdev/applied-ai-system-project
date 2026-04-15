@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 from datetime import date
@@ -7,6 +8,7 @@ from datetime import date
 from pawpal_system import Owner, Task
 
 MODEL_NAME = "gemini-2.5-flash"
+logger = logging.getLogger(__name__)
 
 
 class GeminiPlanExplainer:
@@ -15,17 +17,20 @@ class GeminiPlanExplainer:
 	def __init__(self, model_name: str = MODEL_NAME) -> None:
 		api_key = os.getenv("GEMINI_API_KEY")
 		if not api_key:
+			logger.warning("GeminiPlanExplainer initialization skipped: GEMINI_API_KEY not set")
 			raise RuntimeError("Missing GEMINI_API_KEY")
 
 		try:
 			from google import genai
 		except ImportError as exc:
+			logger.exception("GeminiPlanExplainer initialization failed: google-genai package missing")
 			raise RuntimeError(
 				"google-genai is not installed. Add it to requirements and install dependencies."
 			) from exc
 
 		self._client = genai.Client(api_key=api_key)
 		self._model_name = model_name
+		logger.info("GeminiPlanExplainer initialized with model '%s'", model_name)
 
 	def explain_plan(
 		self,
@@ -37,11 +42,20 @@ class GeminiPlanExplainer:
 		conflict_warnings: list[str],
 	) -> str:
 		"""Return a plain-language explanation grounded in scheduler output."""
+		logger.info(
+			"Generating AI explanation for owner='%s' date='%s' tasks=%d conflicts=%d",
+			owner.name,
+			target_date.isoformat(),
+			len(plan),
+			len(conflict_warnings),
+		)
 		prompt = _build_prompt(owner, plan, pet_names_by_id, plan_reasons, target_date, conflict_warnings)
 		response = self._client.models.generate_content(model=self._model_name, contents=prompt)
 		response_text = (getattr(response, "text", "") or "").strip()
 		if not response_text:
+			logger.error("Gemini returned empty explanation text")
 			raise RuntimeError("Gemini returned an empty explanation")
+		logger.info("AI explanation generated successfully")
 		return response_text
 
 
@@ -169,6 +183,7 @@ def explain_plan_with_fallback(
 	fallback = build_fallback_explanation(plan, plan_reasons, pet_names_by_id)
 
 	if explainer is None:
+		logger.info("Using fallback explanation because AI explainer is unavailable")
 		return fallback, "fallback"
 
 	try:
@@ -181,6 +196,8 @@ def explain_plan_with_fallback(
 			conflict_warnings=conflict_warnings,
 		)
 		first_step = _first_step_line(plan, pet_names_by_id)
+		logger.info("Using AI explanation mode")
 		return _normalize_first_step_text(text, first_step), "ai"
 	except Exception:
+		logger.exception("AI explanation failed; falling back to deterministic explanation")
 		return fallback, "fallback"

@@ -1,9 +1,13 @@
+import logging
 import streamlit as st
 from datetime import date, datetime, time
 from dotenv import load_dotenv
 
 from ai_explainer import GeminiPlanExplainer, explain_plan_with_fallback
 from pawpal_system import Owner, Pet, Scheduler, Task
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -66,9 +70,11 @@ if "ai_explainer" not in st.session_state:
     try:
         st.session_state.ai_explainer = GeminiPlanExplainer()
         st.session_state.ai_explainer_error = ""
+        logger.info("Streamlit AI explainer initialized")
     except RuntimeError as error:
         st.session_state.ai_explainer = None
         st.session_state.ai_explainer_error = str(error)
+        logger.warning("Streamlit running without AI explainer: %s", error)
 
 if "pet_id_counter" not in st.session_state:
     st.session_state.pet_id_counter = 1
@@ -201,6 +207,7 @@ if st.button("Generate schedule"):
             conflict_warnings=conflict_warnings,
             explainer=st.session_state.ai_explainer,
         )
+        logger.info("Streamlit explanation mode selected: %s", explanation_source)
 
         st.markdown("### Why this plan")
         if explanation_source == "ai":
