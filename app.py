@@ -1,7 +1,11 @@
 import streamlit as st
 from datetime import date, datetime
+from dotenv import load_dotenv
 
+from ai_explainer import GeminiPlanExplainer, explain_plan_with_fallback
 from pawpal_system import Owner, Pet, Scheduler, Task
+
+load_dotenv()
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -57,6 +61,14 @@ if "scheduler" not in st.session_state or not isinstance(st.session_state.schedu
 
 scheduler: Scheduler = st.session_state.scheduler
 scheduler.owner = owner
+
+if "ai_explainer" not in st.session_state:
+    try:
+        st.session_state.ai_explainer = GeminiPlanExplainer()
+        st.session_state.ai_explainer_error = ""
+    except RuntimeError as error:
+        st.session_state.ai_explainer = None
+        st.session_state.ai_explainer_error = str(error)
 
 if "pet_id_counter" not in st.session_state:
     st.session_state.pet_id_counter = 1
@@ -180,5 +192,27 @@ if st.button("Generate schedule"):
                 for task in plan
             ]
         )
+        conflict_warnings = scheduler.detect_schedule_conflicts(plan_date, include_completed=False)
+        explanation_text, explanation_source = explain_plan_with_fallback(
+            owner=owner,
+            plan=plan,
+            plan_reasons=scheduler.plan_reasons,
+            target_date=plan_date,
+            conflict_warnings=conflict_warnings,
+            explainer=st.session_state.ai_explainer,
+        )
+
         st.markdown("### Why this plan")
-        st.text(scheduler.explain_plan())
+        if explanation_source == "ai":
+            st.caption("Explanation mode: AI (Gemini)")
+        else:
+            st.caption("Explanation mode: deterministic fallback")
+            if st.session_state.ai_explainer_error:
+                st.info(f"AI unavailable: {st.session_state.ai_explainer_error}")
+
+        if conflict_warnings:
+            st.markdown("### Conflict checks")
+            for warning in conflict_warnings:
+                st.warning(warning)
+
+        st.text(explanation_text)

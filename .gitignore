@@ -3,3 +3,38 @@ __pycache__/
 .venv_new/
 .pytest_cache/
 .DS_Store
+
+# Python bytecode and caches
+*.py[cod]
+*$py.class
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# Coverage and test artifacts
+.coverage
+.coverage.*
+htmlcov/
+
+# Packaging/build outputs
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Streamlit local config/state
+.streamlit/secrets.toml
+
+# IDE/editor artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
