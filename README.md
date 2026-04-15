@@ -1,5 +1,15 @@
 # PawPal+ (Module 2 Project)
 
+## Original Project
+
+The original project was **PawPal+**. Its goal was to help a pet owner manage care tasks by storing owner/pet/task data, generating a daily schedule, and surfacing scheduling conflicts. The core system focused on deterministic planning logic (time, priority, recurrence, completion status) and clear schedule output through both a CLI demo and a Streamlit interface.
+
+## Updated Project Summary
+
+**New Version:** PawPal+ with AI Plan Explanations and Reliability Guardrails
+
+**Summary:** This updated version keeps deterministic pet-care scheduling as the source of truth and adds an AI explanation layer to make plan decisions easier to understand. When Gemini is available, the system generates concise natural-language schedule explanations; when it is unavailable or errors, it safely falls back to deterministic text. This matters because it improves usability while preserving reliability, reproducibility, and testable behavior.
+
 You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
 
 ## Scenario

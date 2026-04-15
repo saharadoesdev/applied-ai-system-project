@@ -14,6 +14,15 @@ class FailingExplainer:
 		raise RuntimeError("Simulated API failure")
 
 
+class DuplicateFirstStepExplainer:
+	def explain_plan(self, **_: object) -> str:
+		return (
+			"Plan summary from AI.\n"
+			"To begin your day, start with Morning walk.\n"
+			"First step: some other task"
+		)
+
+
 def _build_owner_and_plan() -> tuple[Owner, list[Task], dict[int, str]]:
 	owner = Owner(owner_id=1, name="Sahara", available_minutes_per_day=180)
 	pet = Pet(pet_id=101, name="Milo", species="Dog", owner_id=owner.owner_id)
@@ -93,4 +102,22 @@ def test_explain_plan_with_fallback_uses_ai_when_available() -> None:
 
 	assert source == "ai"
 	assert "AI explanation text" in text
+	assert "First step: Morning walk for Milo at 08:00 AM." in text
+
+
+def test_explain_plan_with_fallback_normalizes_duplicate_first_step_lines() -> None:
+	owner, plan, plan_reasons = _build_owner_and_plan()
+
+	text, source = explain_plan_with_fallback(
+		owner=owner,
+		plan=plan,
+		plan_reasons=plan_reasons,
+		target_date=date(2026, 3, 18),
+		conflict_warnings=[],
+		explainer=DuplicateFirstStepExplainer(),
+	)
+
+	assert source == "ai"
+	assert "To begin your day" not in text
+	assert text.count("First step:") == 1
 	assert "First step: Morning walk for Milo at 08:00 AM." in text
